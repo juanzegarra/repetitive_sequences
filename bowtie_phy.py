@@ -1,3 +1,8 @@
+#AUTHOR: JUAN ZEGARRA
+#DATE: 26/06/2026
+
+#pipeline for assembling COI and per gene sequences by reference by first building a consensus reference sequence, then aligning the built sequence back to the original sequences
+
 from Bio import SeqIO
 import subprocess
 from multiprocessing import Pool
@@ -5,12 +10,15 @@ import re
 import os
 import glob
 
+#fasta file that can contain mixed genes from NCBI, they must have the gene name in their header
 gene_fasta = "genes.fasta"
 
-ids = {"COII", "BOSS", "COI", "NADH2", "SINA", "SNF", "WEE", "MARF", "16S"}
+#ids present in the fasta file
+ids = {"COI", "per"}
 
 genes = list(SeqIO.parse(gene_fasta, "fasta"))
 
+#find the interest genes inside the input fasta file, create separate files for each gene 
 for id in ids:
     pattern = re.compile(rf"\b{id}\b", re.IGNORECASE)
     with open(f"{id}.fasta", "w") as output_file:
@@ -18,14 +26,18 @@ for id in ids:
             if pattern.search(gene.description):
                 output_file.write(f">{gene.id}\n{gene.seq}\n")
 
+#read files and their identifier are organized in tuples (R1, R2, ID)
 genomes = {("/home/rhuanmedeiro/job_soap/Dmeri_cleaned_R1.fastq", "/home/rhuanmedeiro/job_soap/Dmeri_cleaned_R2.fastq", "SER"),
-           ("/home/rhuanmedeiro/bowtie_cov_sat/SRR26246248_1_cleaned.fastq", "/home/rhuanmedeiro/bowtie_cov_sat/SRR26246248_2_cleaned.fastq", "ANG")}
+           ("/home/rhuanmedeiro/bowtie_cov_sat/SRR26246248_1_cleaned.fastq", "/home/rhuanmedeiro/bowtie_cov_sat/SRR26246248_2_cleaned.fastq", "ANG"), 
+           ("home/paired_DMA/SRR26246249_cleaned_1.fastq", "home/paired_DMA/SRR26246249_cleaned_2.fastq", "DMA")}
 
+#use muscle and emboss to create consensus
 def create_consensus(id):
     subprocess.run(["muscle", "-in", f"{id}.fasta", "-out", f"{id}_aln.fasta", "-maxiters", "10"], check=True)
     subprocess.run(["cons", "-sequence", f"{id}_aln.fasta", "-outseq", f"{id}_cons.fasta", "-name", f"{id}_cons"], check=True)
     subprocess.run(["bowtie2-build", f"{id}_cons.fasta", f"{id}_cons"], check=True)
 
+    #assemble using bowtie/samtools for each genome
     for genome in genomes:
         subprocess.run([
             "bowtie2", "-x", f"{id}_cons",
@@ -70,14 +82,14 @@ def create_consensus(id):
     for f in remove_files:
         os.remove(f)
 
-
+    #group reference sequences and assembled sequences
     with open(f"{id}_combined.fasta", "wb") as out:
         for genome in genomes:
             with open(samtools_out, "rb") as f:
                 out.write(f.read())
         with open(f"{id}.fasta", "rb") as f:
             out.write(f.read())
-
+    #align them
     subprocess.run([
         "muscle",
         "-in", f"{id}_combined.fasta",
@@ -85,7 +97,7 @@ def create_consensus(id):
         "-maxiters", "10"
     ], check=True)
 
-
+#multithread
 if __name__ == "__main__":
     with Pool(processes=5) as p:
         p.map(create_consensus, ids)

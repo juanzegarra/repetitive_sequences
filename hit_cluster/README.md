@@ -5,7 +5,6 @@ Possui a opção de realizar expansão e agrupamento iterativo por meio das flag
 mas também por proximidade em pares de base entre os hits (flag -ex).
 
 ```
---fasta (arquivo fasta)
 -ex (Tamanho em bp em que hits próximos serão agrupados)
 -cy (ciclos de expansão)
 ```
